@@ -1,131 +1,190 @@
-#include <stdlib.h>
-#include <time.h>
+#include <getopt.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <string.h>
 #include <openssl/conf.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
-//
-int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key, unsigned char *iv, unsigned char *ciphertext);
-int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key, unsigned char *iv, unsigned char*plaintext);
-int main(){
-    //EVP key
+
+/*static struct option long_options[] = {
+     {"dest",    required_argument, 0, 'd'},
+     {"src",     required_argument, 0, 's'},
+     {"port",    required_argument, 0, 'p'},
+     {"file",    required_argument, 0, 'f'},
+     {0,         0,                 0, 0}
+     };
+*/
+#define print_usage() \
+     do {\
+         printf("Usage options:\n" \
+                          "\t[d]estination    - destination ip address\n"\                                    "\t[s]ource         - source ip address\n"\
+                    "\t[p]ort           - port to be used\n"\
+                    "\t[f]ile           - file to be transfered and encrypted\n"\
+                    "");\
+        }while(0)
+
+#define BUFFLEN 1024
+
+int decrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
+int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
+void HandleErrors(void);
+
+int main(int argc, char **argv){
+    FILE* input;
+    FILE* output;
+    //int c;
+    bool server;
+    //unsigned int dest, src;
+    //char *filename;
+    //short port;
+
+    //initilize key
     unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
     //initialization vector
     unsigned char *iv = (unsigned char*)"0123456789012345";
-    //message being encrypted
-    unsigned char *plaintext = (unsigned char*)"hello this is benedict lo";
-    //buffer for the cypher
-    //ciphertext may be longer than the plaintext if padding is being used
-    unsigned char ciphertext[128];
-    //buffer for decrypted data
-    unsigned char decryptedtext[128];
-    int decryptedtext_len, ciphertext_len;
-    //encrypt plaintext
-    ciphertext_len = encrypt(plaintext, strlen((char*)plaintext), key, iv, ciphertext);
 
-    printf("ciphertext is\n");
-    BIO_dump_fp(stdout, (const char*)ciphertext, ciphertext_len);
-    //decrypt the cyphertext
-    decryptedtext_len = decrypt(ciphertext, ciphertext_len, key,iv, decryptedtext);
-    //add a null terminator
-    decryptedtext[decryptedtext_len] = '\0';
 
-    printf("Decrypted text is \n %s \n", decryptedtext);
+    if((input = fopen("Encrypted_file.txt", "rb")) == NULL){
+        printf("Could not be open for reading \n");
+        exit(1);
+    }
+
+    if((output = fopen("Decrypted_file.txt", "wb")) == NULL){
+        printf("Encrypted_file could not be opened for writing");
+        exit(1);
+    }
+    server = 1;
+    if(server){
+        decrypt(input, output, key, iv);
+    } else{
+        encrypt(input, output, key, iv);
+    }
+
+    /*while(1){
+        int option_index = 0;
+        c = getopt_long(argc, argv, "d:s:p:f", long_options, &option_index);
+
+        if(c == -1){
+            break;
+        }
+        switch(c){
+            case 'd':
+                dest = inet_addr(optarg);
+                printf("Destination Address: %i\n", dest);
+                break;
+            case 's':
+                src = inet_addr(src);
+                printf("Source Address: %i\n", src);
+                break;
+            case 'p':
+                port = atoi(optarg);
+                printf("Port: %d\n", port);
+                break;
+            case'f':
+                strcpy(filename, optarg);
+                printf("Filename: %s\n", filename);
+                break;
+            case '?':
+
+            default:
+                //print_usage();
+                return EXIT_SUCCESS;
+        }
+    }*/
+
     return 0;
 }
 
-void handleErrors(void)
-{
-    //dumps any error messages from the OpenSSL error stack to the screen
-  ERR_print_errors_fp(stderr);
-  abort();
+void handleErrors(void){
+    ERR_print_errors_fp(stderr);
+    abort();
 }
 
-int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key, unsigned char *iv, unsigned char *ciphertext){
-  EVP_CIPHER_CTX *ctx;
-  int len;
-  int ciphertext_len;
-    //setup a context
-    //initialise the encryption operation
-    //providing plaintext bytes to be encrypted
-    //finalising the enryption operation
+int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv){
+    EVP_CIPHER_CTX *ctx;
+    unsigned char inbuff[BUFFLEN];
+    unsigned char outbuff[BUFFLEN];
+    int bytesRead, bytesWritten, outLen;
+    //initilize context
+    if(!(ctx = EVP_CIPHER_CTX_new())){
+        handleErrors();
+    }
 
+    if(!EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)){
+        handleErrors();
+    }
 
-  /* Create and initialise a cipher context */
-  if(!(ctx = EVP_CIPHER_CTX_new())) handleErrors();
+    while(1){
+        if((bytesRead = fread(inbuff, sizeof(unsigned char), BUFFLEN, input)) == -1){
+            printf("Could not read file");
+            exit(1);
+        }
+        if((EVP_EncryptUpdate(ctx, outbuff, &outLen, inbuff, bytesRead)) != 1){
+            handleErrors();
+        }
 
-  /* Initialise the encryption operation. IMPORTANT - ensure you use a key
-   * and IV size appropriate for your cipher
-   * In this example we are using 256 bit AES (i.e. a 256 bit key). The
-   * IV size for *most* modes is the same as the block size. For AES this
-   * is 128 bits */
-    // ctx must be initilized first
-    // type is normally supplied by EVP_aes_256_cbc()
-    // if impl is NULL then default
-    // key is the symmetric key
-    // iv is the IV
-    // EVP_EncryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, unsined char *key, unsigned char *iv);
-  if(EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv) != 1){
-    handleErrors();
-  }
-  /* Provide the message to be encrypted, and obtain the encrypted output.
-   * EVP_EncryptUpdate can be called multiple times if necessary*/
-  //intl - encrypts inl bytes from the buffer "in" and writes the encrypted version to "out"
-  //this can be called multiple times to encrypt sucessive blocks of data
-  //outl - number of bytes written
-  //EVPEncryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, unsigned char *in, int inl);
-  if(EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len) != 1){
-    handleErrors();
-    ciphertext_len = len;
-  }
-  /* Finalise the encryption. Further ciphertext bytes may be written at
-   * this stage.*/
-  //If padding is enabled this will encrypt the final data reamining in the block
-  //written to "out"
-  //EVP_EncryptFinal_ex(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl);
-  if(EVP_EncryptFinal_ex(ctx, ciphertext + len, &len) != 1){
-      handleErrors();
-      ciphertext_len += len;
-  }
-
-  /* Clean up */
-  EVP_CIPHER_CTX_free(ctx);
-
-  return ciphertext_len;
+        if((bytesWritten = fwrite(outbuff, sizeof(unsigned char), outLen, output)) == -1){
+        printf("Could not write to file");
+        }
+        if(bytesRead < BUFFLEN){
+            break;
+            //encrypt the last block of data
+        }
+    }
+    if(!EVP_EncryptFinal_ex(ctx, outbuff, &outLen)){
+        printf("Error on the last block of data");
+        handleErrors();
+    }
+    if((bytesWritten = fwrite(outbuff, sizeof(unsigned char), outLen, output)) == -1){
+        printf("Could not write the last block to file");
+    }
+    EVP_CIPHER_CTX_free(ctx);
+    return 1;
 }
 
-int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key, unsigned char *iv, unsigned char *plaintext){
-  EVP_CIPHER_CTX *ctx;
-  int len;
-  int plaintext_len;
 
-  /* Create and initialise the context */
-  if(!(ctx = EVP_CIPHER_CTX_new())) handleErrors();
+int decrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv){
+    EVP_CIPHER_CTX *ctx;
+    unsigned char inbuff[BUFFLEN];
+    unsigned char outbuff[BUFFLEN];
+    int bytesRead, bytesWritten, outLen;
+    //initilize context
+    if(!(ctx = EVP_CIPHER_CTX_new())){
+        handleErrors();
+    }
 
-  /* Initialise the decryption operation. IMPORTANT - ensure you use a key
-   * and IV size appropriate for your cipher
-   * In this example we are using 256 bit AES (i.e. a 256 bit key). The
-   * IV size for *most* modes is the same as the block size. For AES this
-   * is 128 bits */
-  if(1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv))
-    handleErrors();
+    if(!EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)){
+        handleErrors();
+    }
 
-  /* Provide the message to be decrypted, and obtain the plaintext output.
-   * EVP_DecryptUpdate can be called multiple times if necessary
-   */
-  if(1 != EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len))
-    handleErrors();
-  plaintext_len = len;
+    while(1){
+        if((bytesRead = fread(inbuff, sizeof(unsigned char), BUFFLEN, input)) == -1){
+            printf("Could not read file");
+            exit(1);
+        }
+        if((EVP_DecryptUpdate(ctx, outbuff, &outLen, inbuff, bytesRead)) != 1){
+            handleErrors();
+        }
 
-  /* Finalise the decryption. Further plaintext bytes may be written at
-   * this stage.
-   */
-  if(1 != EVP_DecryptFinal_ex(ctx, plaintext + len, &len)) handleErrors();
-  plaintext_len += len;
-
-  /* Clean up */
-  EVP_CIPHER_CTX_free(ctx);
-
-  return plaintext_len;
+        if((bytesWritten = fwrite(outbuff, sizeof(unsigned char), outLen, output)) == -1){
+        printf("Could not write to file");
+        }
+        if(bytesRead < BUFFLEN){
+            break;
+            //encrypt the last block of data
+        }
+    }
+    if(!EVP_DecryptFinal_ex(ctx, outbuff, &outLen)){
+        printf("Error on the last block of data");
+        handleErrors();
+    }
+    if((bytesWritten = fwrite(outbuff, sizeof(unsigned char), outLen, output)) == -1){
+        printf("Could not write the last block to file");
+    }
+    EVP_CIPHER_CTX_free(ctx);
+    return 1;
 }
+
