@@ -8,6 +8,7 @@
 #include <openssl/conf.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <QGuiApplication>
 
 /*static struct option long_options[] = {
      {"dest",    required_argument, 0, 'd'},
