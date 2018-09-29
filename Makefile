@@ -1,2 +1,2 @@
-stego: stego.cpp
-	g++ -g -Wall -o stego stego.cpp -lcrypto
+stego:stego.c ./wrappers/epoll.c ./wrappers/socketwrappers.c
+	gcc -g -Wall -o stego stego.c ./wrappers/epoll.c ./wrappers/socketwrappers.c -lcrypto
