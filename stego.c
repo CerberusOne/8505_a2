@@ -175,9 +175,30 @@ void sendFile(int serversocket, char *filename){
         char buff[BUFFLEN];
         int bytesSent;
         FILE *input;
-        if((input = fopen("input.txt", "rb")) == NULL){
+        if((input = fopen("linux.bmp", "rb")) == NULL){
            perror("fopen");
         }
+
+         /*memset(&buff, 0, BUFFLEN);
+         bytesRead = fread(buff, sizeof(char), BUFFLEN, input);
+         while(bytesRead){
+            if(bytesRead == -1){
+                perror("client:fread");
+            }
+            if((bytesSent = send(serversocket, buff, bytesRead, 0)) == -1){
+                perror("client:send");
+            }
+            memset(&buff, 0, BUFFLEN);
+            bytesRead = fread(buff, sizeof(char), BUFFLEN, input);
+         }
+         memset(&buff, 0, BUFFLEN);
+         while((bytesRead = fread(buff, sizeof(char), BUFFLEN, input)) > 0){
+            if((bytesSent = send(serversocket, buff, bytesRead, 0)) == -1){
+                perror("client:send");
+            }
+            memset(&buff, 0, BUFFLEN);
+         }*/
+
         memset(&buff, 0, BUFFLEN);
         bytesRead = fread(buff, sizeof(char), BUFFLEN, input);
         while(1){
@@ -228,10 +249,43 @@ void NewData(int socket){
          int bytesRead;
          int bytesWritten;
          FILE *output;
-         if((output = fopen("output.txt", "wb+")) == NULL){
+         if((output = fopen("output.bmp", "wb+")) == NULL){
             perror("fopen");
          }
+
+         /*memset(&buff, 0, BUFFLEN);
+         bytesRead = recv(socket, buff, BUFFLEN, 0);
+         while(bytesRead){
+            if(bytesRead == -1){
+                perror("server:recv");
+            }
+            if((bytesWritten = fwrite(buff, sizeof(char), bytesRead, output)) == -1){
+                perror("server:fwrite");
+            }
+            memset(&buff, 0, BUFFLEN);
+            bytesRead = recv(socket, buff, BUFFLEN, 0);
+         }
+
          memset(&buff, 0, BUFFLEN);
+
+         while((bytesRead = recv(socket, buff, BUFFLEN, 0)) > 0){
+            if((bytesWritten = fwrite(buff, sizeof(char), bytesRead, output)) < bytesRead){
+                perror("server:fwrite");
+            }
+            memset(&buff, 0, BUFFLEN);
+            if(bytesRead == 0 || bytesRead != BUFFLEN){
+                break;
+            }
+            if(bytesRead < 0){
+                if(errno = EAGAIN){
+                    perror("recv timed out");
+                } else {
+                    perror("failed to errno");
+                }
+            }
+         }*/
+
+         //memset(&buff, 0, BUFFLEN);
          bytesRead = recvBytes(socket, buff);
          while(1){
             if(bytesRead == 0){
@@ -241,10 +295,10 @@ void NewData(int socket){
                 perror("server:recv");
                 exit(1);
             }
-            /*if((bytesWritten = fwrite(buff, sizeof(unsigned char), sizeof(buff), output)) == -1){
+            if((bytesWritten = fwrite(buff, sizeof(unsigned char), sizeof(buff), output)) == -1){
                  perror("server:fwrite");
-            }*/
-            fprintf(output, "%s", buff);
+            }
+            //fprintf(output, "%s", buff);
             bytesRead = recvBytes(socket, buff);
          }
          fclose(output);
