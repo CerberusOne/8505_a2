@@ -111,12 +111,11 @@ int main(int argc, char **argv){
     listensocket = makeBind(port);
 
     setNonBlocking(listensocket);
-
-    setListen(listensocket);
-
     epollfd = createEpollFd();
-    event.events = EPOLLIN | EPOLLET | EPOLLEXCLUSIVE;
+    event.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
+    event.data.fd = listensocket;
     addEpollSocket(epollfd, listensocket, &event);
+    setListen(listensocket);
 
 
     events = calloc(MAXEVENTS, sizeof(event));
@@ -128,7 +127,7 @@ int main(int argc, char **argv){
             if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)){
                 close(events[i].data.fd);
                 continue;
-            } else if((events[i].data.fd == listensocket)){
+            } else if(events[i].data.fd == listensocket){
                     NewConnection(events[i].data.fd, epollfd);
                     printf("New Connection on the server!\n");
                 } else if(events[i].events & EPOLLIN){
@@ -166,6 +165,7 @@ int main(int argc, char **argv){
                 bzero(buff, BUFFLEN);
                 bytesRead = fread(buff, sizeof(unsigned char), BUFFLEN, input);
             }
+            fclose(input);
             close(serversocket);
             break;
          }
@@ -226,7 +226,7 @@ int NewData(int socket){
          if((output = fopen("output.txt", "wb")) == NULL){
             perror("fopen");
          }
-
+         bzero(buff, BUFFLEN);
          bytesRead = recvBytes(socket, buff);
          while(1){
             if(bytesRead == -1){
@@ -239,7 +239,7 @@ int NewData(int socket){
             bzero(buff, BUFFLEN);
             bytesRead = recvBytes(socket, buff);
          }
-
+         fclose(output);
          close(socket);
 }
 void handleErrors(void){
