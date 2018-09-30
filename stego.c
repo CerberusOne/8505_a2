@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,33 +14,37 @@
 #include <sys/epoll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <limits.h>
+#include <unistd.h>
 #include "./wrappers/epoll.h"
 #include "./wrappers/socketwrappers.h"
 
 static struct option long_options[] = {
-     {"ip",      required_argument, 0, 'i'},
-     {"port",    required_argument, 0, 'p'},
-     {"file",    required_argument, 0, 'f'},
-     {"server",  no_argument, 0, 's'},
-     {0,         0,                 0, 0}
-     };
+    {"ip",      required_argument, 0, 'i'},
+    {"port",    required_argument, 0, 'p'},
+    {"file",    required_argument, 0, 'f'},
+    {"server",  no_argument, 0, 's'},
+    {0,         0,                 0, 0}
+};
 
 #define print_usage() \
-     do {\
-         printf("Usage options:\n" \
-                    "\t[d]estination    - destination ip address\n"\                                   "\t[s]ource         - source ip address\n"\
-                    "\t[p]ort           - port to be used\n"\
-                    "\t[f]ile           - file to be transfered and encrypted\n"\
-                    "\t[s]erver         - default is client\n"\
-                    "");\
-        }while(0)
+    do {\
+        printf("Usage options:\n" \
+                "\t[d]estination    - destination ip address\n"\                                   "\t[s]ource         - source ip address\n"\
+                "\t[p]ort           - port to be used\n"\
+                "\t[f]ile           - file to be transfered and encrypted\n"\
+                "\t[s]erver         - default is client\n"\
+                "");\
+    }while(0)
 
 #define BUFFLEN 1024
 #define MAXEVENTS 60
 
-void sendFile(int serversocket, char *filename);
+int sendFile(int serversocket, int input, int pipefd[2]);
 void NewConnection(int socket, int epollfd);
-void NewData(int socket);
+void spliceTo(int source, int destination, int pipefd[2]);
 //int decrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
 //int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
 //void HandleErrors(void);
@@ -47,6 +52,7 @@ void NewData(int socket);
 int main(int argc, char **argv){
     //FILE* input;
     //FILE* output;
+    int output;
     struct epoll_event event;
     struct epoll_event *events;
     int c, listensocket, epollfd;
@@ -54,6 +60,7 @@ int main(int argc, char **argv){
     char * ip = 0;
     char * port = 0;
     char *filename;
+    int pipefd[2];
 
     while(1){
         int option_index = 0;
@@ -92,56 +99,83 @@ int main(int argc, char **argv){
     //unsigned char *iv = (unsigned char*)"0123456789012345";
 
     /*
-    if((input = fopen("Encrypted_file.txt", "rb")) == NULL){
-        printf("Could not be open for reading \n");
-        exit(1);
+       if((input = fopen("Encrypted_file.txt", "rb")) == NULL){
+       printf("Could not be open for reading \n");
+       exit(1);
+       }
+
+       if((output = fopen("Decrypted_file.txt", "wb")) == NULL){
+       printf("Encrypted_file could not be opened for writing");
+       exit(1);
+       }
+       server = 1;
+       if(server){
+       decrypt(input, output, key, iv);
+       } else{
+       encrypt(input, output, key, iv);
+       }*/
+
+    if(pipe(pipefd) == -1) {
+        perror("creating pipe");
     }
 
-    if((output = fopen("Decrypted_file.txt", "wb")) == NULL){
-        printf("Encrypted_file could not be opened for writing");
-        exit(1);
-    }
-    server = 1;
     if(server){
-        decrypt(input, output, key, iv);
-    } else{
-        encrypt(input, output, key, iv);
-    }*/
+        /*
+        if((output = fopen("output.bmp", "wb+")) == NULL){
+            perror("fopen");
+        }
+        */
 
-    if(server){
-    listensocket = makeBind(port);
-
-    setNonBlocking(listensocket);
-    epollfd = createEpollFd();
-    event.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
-    event.data.fd = listensocket;
-    addEpollSocket(epollfd, listensocket, &event);
-    setListen(listensocket);
+        if((output = open("output.bmp", O_WRONLY)) < 0) {
+            perror("file can't be opened");
+            exit(1);
+        }
 
 
-    events = calloc(MAXEVENTS, sizeof(event));
-    while(1){
-        int fd, i;
-        fd = waitForEpollEvent(epollfd, events);
+        listensocket = makeBind(port);
+        setNonBlocking(listensocket);
+        epollfd = createEpollFd();
+        event.events = EPOLLIN | EPOLLERR | EPOLLHUP | EPOLLET;
+        event.data.fd = listensocket;
+        addEpollSocket(epollfd, listensocket, &event);
+        setListen(listensocket);
 
-        for(i = 0; i < fd; i++){
-            if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)){
-                close(events[i].data.fd);
-                continue;
-            } else if(events[i].data.fd == listensocket){
+
+        events = calloc(MAXEVENTS, sizeof(event));
+        while(1){
+            int fd, i;
+            fd = waitForEpollEvent(epollfd, events);
+
+            for(i = 0; i < fd; i++){
+                if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)){
+                    close(events[i].data.fd);
+                    continue;
+                } else if(events[i].data.fd == listensocket){
                     NewConnection(events[i].data.fd, epollfd);
                     printf("New Connection on the server!\n");
                 } else if(events[i].events & EPOLLIN){
-                    NewData(events[i].data.fd);
+                    //NewData(events[i].data.fd, output, pipefd);
+                    spliceTo(events[i].data.fd, output, pipefd);
                     printf("New data!\n");
                 }
             }
         }
+
+        close(output);
     } else {
         int serversocket;
+        int input;
+
+        if((input = open("linux.bmp", O_RDONLY)) < 0) {
+            perror("file can't be opened");
+            exit(1);
+        }
 
         serversocket = makeConnect(ip, port);
-        sendFile(serversocket, filename);
+        //sendFile(serversocket, input, pipefd);
+        spliceTo(input, serversocket, pipefd);
+
+        close(input);
     }
 
     //initilize key
@@ -150,75 +184,57 @@ int main(int argc, char **argv){
     //unsigned char *iv = (unsigned char*)"0123456789012345";
 
     /*
-    if((input = fopen("Encrypted_file.txt", "rb")) == NULL){
-        printf("Could not be open for reading \n");
-        exit(1);
-    }
+       if((input = fopen("Encrypted_file.txt", "rb")) == NULL){
+       printf("Could not be open for reading \n");
+       exit(1);
+       }
 
-    if((output = fopen("Decrypted_file.txt", "wb")) == NULL){
-        printf("Encrypted_file could not be opened for writing");
-        exit(1);
-    }
-    server = 1;
-    if(server){
-        decrypt(input, output, key, iv);
-    } else{
-        encrypt(input, output, key, iv);
-    }*/
+       if((output = fopen("Decrypted_file.txt", "wb")) == NULL){
+       printf("Encrypted_file could not be opened for writing");
+       exit(1);
+       }
+       server = 1;
+       if(server){
+       decrypt(input, output, key, iv);
+       } else{
+       encrypt(input, output, key, iv);
+       }*/
 
     return 0;
 }
 
-void sendFile(int serversocket, char *filename){
-    while(1){
-        int bytesRead;
-        char buff[BUFFLEN];
-        int bytesSent;
-        FILE *input;
-        if((input = fopen("linux.bmp", "rb")) == NULL){
-           perror("fopen");
+//splice from one file descriptor to another
+void spliceTo(int source, int destination, int pipefd[2]){
+    int getBytes;
+    int writeBytes;
+
+    while(1) {
+        //move bytes from source fd to pipe
+        if((getBytes = splice(source, 0, pipefd[1], 0, USHRT_MAX, SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK)) == -1 && errno != EAGAIN) {
+            perror("getting splice error");
         }
 
-         /*memset(&buff, 0, BUFFLEN);
-         bytesRead = fread(buff, sizeof(char), BUFFLEN, input);
-         while(bytesRead){
-            if(bytesRead == -1){
-                perror("client:fread");
-            }
-            if((bytesSent = send(serversocket, buff, bytesRead, 0)) == -1){
-                perror("client:send");
-            }
-            memset(&buff, 0, BUFFLEN);
-            bytesRead = fread(buff, sizeof(char), BUFFLEN, input);
-         }
-         memset(&buff, 0, BUFFLEN);
-         while((bytesRead = fread(buff, sizeof(char), BUFFLEN, input)) > 0){
-            if((bytesSent = send(serversocket, buff, bytesRead, 0)) == -1){
-                perror("client:send");
-            }
-            memset(&buff, 0, BUFFLEN);
-         }*/
+        if(getBytes == 0) {
+            return;
+        }
 
-        memset(&buff, 0, BUFFLEN);
-        bytesRead = fread(buff, sizeof(char), BUFFLEN, input);
-        while(1){
-            if(bytesRead == 0){
+        printf("bytes read: %d\n", getBytes);
+
+        //write bytes from pipe to destination fd
+        do{
+            writeBytes = splice(pipefd[0], 0, destination, 0, getBytes, SPLICE_F_MOVE | SPLICE_F_MORE | SPLICE_F_NONBLOCK);
+
+            if(writeBytes <= 0) {
+                if(writeBytes == -1 && errno != EAGAIN) {
+                    perror("writing splice error");
+                }
                 break;
             }
-            if(bytesRead == -1){
-                perror("client:fread");
-                exit(1);
-            }
-            if((bytesSent = send(serversocket, buff, sizeof(buff), 0)) == -1){
-                    perror("client:send");
-            }
-            printf("Bytes sent: %i", bytesSent);
-            bytesRead = fread(buff, sizeof(unsigned char), BUFFLEN, input);
-        }
-        fclose(input);
-        close(serversocket);
-        break;
-     }
+
+            printf("wrote: %d\n", writeBytes);
+            getBytes -= writeBytes;
+        } while(getBytes);
+    }
 }
 
 void NewConnection(int socket, int epollfd){
@@ -229,7 +245,7 @@ void NewConnection(int socket, int epollfd){
     while(1){
         sin_size = sizeof(struct sockaddr_storage);
         if((clientsocket = accept(socket, (struct sockaddr*)&their_addr, &sin_size)) == -1){
-           if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
+            if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
                 break;
                 //no more connections
             } else {
@@ -237,73 +253,13 @@ void NewConnection(int socket, int epollfd){
                 break;
             }
         }
-         setNonBlocking(clientsocket);
-         event.events = EPOLLIN | EPOLLET | EPOLLOUT;
-         event.data.fd = clientsocket;
-         addEpollSocket(epollfd, clientsocket, &event);
+        setNonBlocking(clientsocket);
+        event.events = EPOLLIN | EPOLLET | EPOLLOUT;
+        event.data.fd = clientsocket;
+        addEpollSocket(epollfd, clientsocket, &event);
     }
 }
 
-void NewData(int socket){
-         char buff[BUFFLEN];
-         int bytesRead;
-         int bytesWritten;
-         FILE *output;
-         if((output = fopen("output.bmp", "wb+")) == NULL){
-            perror("fopen");
-         }
-
-         /*memset(&buff, 0, BUFFLEN);
-         bytesRead = recv(socket, buff, BUFFLEN, 0);
-         while(bytesRead){
-            if(bytesRead == -1){
-                perror("server:recv");
-            }
-            if((bytesWritten = fwrite(buff, sizeof(char), bytesRead, output)) == -1){
-                perror("server:fwrite");
-            }
-            memset(&buff, 0, BUFFLEN);
-            bytesRead = recv(socket, buff, BUFFLEN, 0);
-         }
-
-         memset(&buff, 0, BUFFLEN);
-
-         while((bytesRead = recv(socket, buff, BUFFLEN, 0)) > 0){
-            if((bytesWritten = fwrite(buff, sizeof(char), bytesRead, output)) < bytesRead){
-                perror("server:fwrite");
-            }
-            memset(&buff, 0, BUFFLEN);
-            if(bytesRead == 0 || bytesRead != BUFFLEN){
-                break;
-            }
-            if(bytesRead < 0){
-                if(errno = EAGAIN){
-                    perror("recv timed out");
-                } else {
-                    perror("failed to errno");
-                }
-            }
-         }*/
-
-         //memset(&buff, 0, BUFFLEN);
-         bytesRead = recvBytes(socket, buff);
-         while(1){
-            if(bytesRead == 0){
-                break;
-            }
-            if(bytesRead == -1){
-                perror("server:recv");
-                exit(1);
-            }
-            if((bytesWritten = fwrite(buff, sizeof(unsigned char), sizeof(buff), output)) == -1){
-                 perror("server:fwrite");
-            }
-            //fprintf(output, "%s", buff);
-            bytesRead = recvBytes(socket, buff);
-         }
-         fclose(output);
-         close(socket);
-}
 void handleErrors(void){
     ERR_print_errors_fp(stderr);
     abort();
@@ -333,7 +289,7 @@ int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv){
         }
 
         if((bytesWritten = fwrite(outbuff, sizeof(unsigned char), outLen, output)) == -1){
-        printf("Could not write to file");
+            printf("Could not write to file");
         }
         if(bytesRead < BUFFLEN){
             break;
@@ -376,7 +332,7 @@ int decrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv){
         }
 
         if((bytesWritten = fwrite(outbuff, sizeof(unsigned char), outLen, output)) == -1){
-        printf("Could not write to file");
+            printf("Could not write to file");
         }
         if(bytesRead < BUFFLEN){
             break;

@@ -55,13 +55,13 @@ struct addrinfo setAddrInfo(const char* address,const char *port, struct addrinf
 }
 
 int setBind(int fd, struct addrinfo *p){
-        int r;
-        if((r = bind(fd, p->ai_addr, p->ai_addrlen)) == -1){
-            perror("bind");
-            exit(1);
-            return -1;
-        }
-        return r;
+    int r;
+    if((r = bind(fd, p->ai_addr, p->ai_addrlen)) == -1){
+        perror("bind");
+        exit(1);
+        return -1;
+    }
+    return r;
 }
 
 void setListen(int fd){
@@ -97,12 +97,12 @@ int makeConnect(const char *address, const char *port){
             perror("client:bind");
             continue;
         }
-            break;
+        break;
     }
 
-        freeaddrinfo(servinfo);
+    freeaddrinfo(servinfo);
 
-        //set_non_blocking(fd);
+    //set_non_blocking(fd);
 
     return fd;
 }
@@ -139,13 +139,13 @@ int makeBind(const char *port){
             continue;
         }
         break;
-        }
-        if(p == NULL){
-            perror("Could not bind");
-        }
-        freeaddrinfo(servinfo);
+    }
+    if(p == NULL){
+        perror("Could not bind");
+    }
+    freeaddrinfo(servinfo);
 
-        //set_non_blocking(fd);
+    //set_non_blocking(fd);
 
     return fd;
 }
@@ -163,7 +163,7 @@ int recvBytes(int fd, char *buff){
     int bytesread;
     if((bytesread = recv(fd, buff, sizeof(buff), 0)) != -1){
         if(errno != EAGAIN){
-        perror("read");
+            perror("read");
         }
     }
     return bytesread;
