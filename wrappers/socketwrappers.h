@@ -27,5 +27,4 @@ int makeConnect(const char *address, const char *port);
 int Accept(int fd, struct sockaddr_storage *addr);
 int recvBytes(int fd, char *buff);
 int readBytes(int fd, char *buff);
-
 #endif

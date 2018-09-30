@@ -80,6 +80,7 @@ int makeConnect(const char *address, const char *port){
     memset(&hints, 0, sizeof(struct addrinfo));
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
 
     if((getaddrinfo(address, port, &hints, &servinfo)) != 0){
         perror("getaddrinfo");
@@ -88,12 +89,12 @@ int makeConnect(const char *address, const char *port){
 
     for(p = servinfo; p != NULL; p->ai_next){
         if((fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1){
-            perror("server: socket");
+            perror("client: socket");
             continue;
         }
-        if((connect(fd, p->ai_addr, p->ai_addrlen)) == 0){
+        if((connect(fd, p->ai_addr, p->ai_addrlen)) == -1){
             close(fd);
-            perror("server:bind");
+            perror("client:bind");
             continue;
         }
             break;
@@ -158,11 +159,11 @@ int Accept(int fd, struct sockaddr_storage *addr){
     return r;
 }
 
-int readBytes(int fd, char *buff){
+int recvBytes(int fd, char *buff){
     int bytesread;
-    if((bytesread = read(fd, buff, sizeof(buff))) != -1){
+    if((bytesread = recv(fd, buff, sizeof(buff), 0)) != -1){
         if(errno != EAGAIN){
-        perror("read");
+            perror("read");
         }
     }
     return bytesread;

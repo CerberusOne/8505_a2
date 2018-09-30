@@ -17,10 +17,10 @@
 #include "./wrappers/socketwrappers.h"
 
 static struct option long_options[] = {
-     {"ip",    required_argument, 0, 'i'},
+     {"ip",      required_argument, 0, 'i'},
      {"port",    required_argument, 0, 'p'},
      {"file",    required_argument, 0, 'f'},
-     {"server",  required_argument, 0, 's'},
+     {"server",  no_argument, 0, 's'},
      {0,         0,                 0, 0}
      };
 
@@ -37,9 +37,10 @@ static struct option long_options[] = {
 #define BUFFLEN 1024
 #define MAXEVENTS 60
 
-int decrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
-int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
-void HandleErrors(void);
+//int NewConnection(int socket, int epollfd, FILE *input);
+//int decrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
+//int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
+//void HandleErrors(void);
 
 int main(int argc, char **argv){
     //FILE* input;
@@ -131,8 +132,8 @@ int main(int argc, char **argv){
             } else if((events[i].events & EPOLLIN)){
                 int clientsocket;
                 while(1){
-                        sin_size = sizeof(struct sockaddr_storage);
-                        if((clientsocket = accept(listensocket, (struct sockaddr*)&their_addr, &sin_size)) == -1){
+                    sin_size = sizeof(struct sockaddr_storage);
+                    if((clientsocket = accept(listensocket, (struct sockaddr*)&their_addr, &sin_size)) == -1){
                         if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
                             break;
                             //no more connections
@@ -147,23 +148,60 @@ int main(int argc, char **argv){
                      addEpollSocket(epollfd, clientsocket, &event);
                      char buff[BUFFLEN];
                      int bytesRead;
-                     fflush(stdout);
-                     bytesRead = read(events[i].data.fd, buff, sizeof(buff));
-                     printf("%s", buff);
+                     int bytesWritten;
+                     FILE *output;
+                     if((output = fopen("output.txt", "wb")) == NULL){
+                        perror("fopen");
+                     }
+
+                     bytesRead = recvBytes(events[i].data.fd, buff);
+                     while(1){
+                        if(bytesRead == -1){
+                            perror("server:recv");
+                            exit(1);
+                        }
+                         if((bytesWritten = fwrite(buff, sizeof(unsigned char), BUFFLEN, output)) == -1){
+                             perror("server:fwrite");
+                         }
+                         bzero(buff, BUFFLEN);
+                         bytesRead = recvBytes(events[i].data.fd, buff);
+                     }
+
                      close(events[i].data.fd);
                     }
                 }
             }
         }
     } else {
-        int clientsocket;
+        int serversocket;
 
-        clientsocket = makeConnect(ip, port);
+        serversocket = makeConnect(ip, port);
         while(1){
             //send file
+            int bytesRead;
+            char buff[BUFFLEN];
+             int bytesSent;
+             FILE *input;
+             if((input = fopen("input.txt", "rb")) == NULL){
+                perror("fopen");
+             }
+             bytesRead = fread(buff, sizeof(char), BUFFLEN, input);
+             while(1){
+                 if(bytesRead == -1){
+                     perror("client:fread");
+                     exit(1);
+                 }
+                 if((bytesSent = send(serversocket, buff, bytesRead, 0)) > 0){
+                         perror("client:send");
+                 }
+                 printf("Bytes sent: %i", bytesSent);
+                 bzero(buff, BUFFLEN);
+                 bytesRead = fread(buff, sizeof(unsigned char), BUFFLEN, input);
+                 }
+                close(serversocket);
+             }
         }
 
-    }
     //initilize key
     //unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
     //initialization vector
@@ -188,7 +226,9 @@ int main(int argc, char **argv){
 
     return 0;
 }
-
+int NewConnection(int socket, int epollfd, FILE *input){
+    return 0;
+}
 void handleErrors(void){
     ERR_print_errors_fp(stderr);
     abort();
