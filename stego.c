@@ -37,7 +37,8 @@ static struct option long_options[] = {
 #define BUFFLEN 1024
 #define MAXEVENTS 60
 
-//int NewConnection(int socket, int epollfd, FILE *input);
+int NewConnection(int socket, int epollfd);
+int NewData(int socket);
 //int decrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
 //int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
 //void HandleErrors(void);
@@ -74,7 +75,7 @@ int main(int argc, char **argv){
                 break;
             case's':
                 server = true;
-                printf("Server: true");
+                printf("Server: true\n");
                 break;
             case '?':
 
@@ -120,55 +121,19 @@ int main(int argc, char **argv){
 
     events = calloc(MAXEVENTS, sizeof(event));
     while(1){
-        socklen_t sin_size;
         int fd, i;
-        struct sockaddr_storage their_addr;
         fd = waitForEpollEvent(epollfd, events);
 
         for(i = 0; i < fd; i++){
             if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)){
                 close(events[i].data.fd);
                 continue;
-            } else if((events[i].events & EPOLLIN)){
-                int clientsocket;
-                while(1){
-                    sin_size = sizeof(struct sockaddr_storage);
-                    if((clientsocket = accept(listensocket, (struct sockaddr*)&their_addr, &sin_size)) == -1){
-                        if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
-                            break;
-                            //no more connections
-                        } else {
-                            perror("accept");
-                            break;
-                        }
-                    }
-                     setNonBlocking(clientsocket);
-                     event.events = EPOLLIN | EPOLLET | EPOLLOUT;
-                     event.data.fd = clientsocket;
-                     addEpollSocket(epollfd, clientsocket, &event);
-                     char buff[BUFFLEN];
-                     int bytesRead;
-                     int bytesWritten;
-                     FILE *output;
-                     if((output = fopen("output.txt", "wb")) == NULL){
-                        perror("fopen");
-                     }
-
-                     bytesRead = recvBytes(events[i].data.fd, buff);
-                     while(1){
-                        if(bytesRead == -1){
-                            perror("server:recv");
-                            exit(1);
-                        }
-                         if((bytesWritten = fwrite(buff, sizeof(unsigned char), BUFFLEN, output)) == -1){
-                             perror("server:fwrite");
-                         }
-                         bzero(buff, BUFFLEN);
-                         bytesRead = recvBytes(events[i].data.fd, buff);
-                     }
-
-                     close(events[i].data.fd);
-                    }
+            } else if((events[i].data.fd == listensocket)){
+                    NewConnection(events[i].data.fd, epollfd);
+                    printf("New Connection on the server!\n");
+                } else if(events[i].events & EPOLLIN){
+                    NewData(events[i].data.fd);
+                    printf("New data!\n");
                 }
             }
         }
@@ -180,27 +145,31 @@ int main(int argc, char **argv){
             //send file
             int bytesRead;
             char buff[BUFFLEN];
-             int bytesSent;
-             FILE *input;
-             if((input = fopen("input.txt", "rb")) == NULL){
-                perror("fopen");
-             }
-             bytesRead = fread(buff, sizeof(char), BUFFLEN, input);
-             while(1){
-                 if(bytesRead == -1){
-                     perror("client:fread");
-                     exit(1);
-                 }
-                 if((bytesSent = send(serversocket, buff, bytesRead, 0)) > 0){
-                         perror("client:send");
-                 }
-                 printf("Bytes sent: %i", bytesSent);
-                 bzero(buff, BUFFLEN);
-                 bytesRead = fread(buff, sizeof(unsigned char), BUFFLEN, input);
-                 }
-                close(serversocket);
-             }
-        }
+            int bytesSent;
+            FILE *input;
+            if((input = fopen("input.txt", "rb")) == NULL){
+               perror("fopen");
+            }
+            bytesRead = fread(buff, sizeof(char), BUFFLEN, input);
+            while(1){
+                if(bytesRead == 0){
+                    break;
+                }
+                if(bytesRead == -1){
+                    perror("client:fread");
+                    exit(1);
+                }
+                if((bytesSent = send(serversocket, buff, bytesRead, 0)) == -1){
+                        perror("client:send");
+                }
+                printf("Bytes sent: %i", bytesSent);
+                bzero(buff, BUFFLEN);
+                bytesRead = fread(buff, sizeof(unsigned char), BUFFLEN, input);
+            }
+            close(serversocket);
+            break;
+         }
+    }
 
     //initilize key
     //unsigned char *key = (unsigned char *)"01234567890123456789012345678901";
@@ -226,8 +195,52 @@ int main(int argc, char **argv){
 
     return 0;
 }
-int NewConnection(int socket, int epollfd, FILE *input){
-    return 0;
+int NewConnection(int socket, int epollfd){
+    struct epoll_event event;
+    socklen_t sin_size;
+    struct sockaddr_storage their_addr;
+    int clientsocket;
+    while(1){
+        sin_size = sizeof(struct sockaddr_storage);
+        if((clientsocket = accept(socket, (struct sockaddr*)&their_addr, &sin_size)) == -1){
+            if((errno == EAGAIN) || (errno == EWOULDBLOCK)){
+                break;
+                //no more connections
+            } else {
+                perror("accept");
+                break;
+            }
+        }
+         setNonBlocking(clientsocket);
+         event.events = EPOLLIN | EPOLLET | EPOLLOUT;
+         event.data.fd = clientsocket;
+         addEpollSocket(epollfd, clientsocket, &event);
+    }
+}
+
+int NewData(int socket){
+         char buff[BUFFLEN];
+         int bytesRead;
+         int bytesWritten;
+         FILE *output;
+         if((output = fopen("output.txt", "wb")) == NULL){
+            perror("fopen");
+         }
+
+         bytesRead = recvBytes(socket, buff);
+         while(1){
+            if(bytesRead == -1){
+                perror("server:recv");
+                exit(1);
+            }
+            if((bytesWritten = fwrite(buff, sizeof(unsigned char), BUFFLEN, output)) == -1){
+                 perror("server:fwrite");
+            }
+            bzero(buff, BUFFLEN);
+            bytesRead = recvBytes(socket, buff);
+         }
+
+         close(socket);
 }
 void handleErrors(void){
     ERR_print_errors_fp(stderr);
