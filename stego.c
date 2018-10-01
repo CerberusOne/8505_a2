@@ -49,8 +49,8 @@ void crypto(char *input,char *output, unsigned char *key, unsigned char *iv, boo
 int sendFile(int serversocket, int input, int pipefd[2]);
 void NewConnection(int socket, int epollfd);
 void spliceTo(int source, int destination, int pipefd[2]);
-int decrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
-int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
+int decryptFile(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
+int encryptFile(FILE *input, FILE *output, unsigned char *key, unsigned char *iv);
 void HandleErrors(void);
 
 int main(int argc, char **argv){
@@ -65,7 +65,6 @@ int main(int argc, char **argv){
     char *inputfile;
     char *outputfile;
     int pipefd[2];
-    int servertest, clienttest;
     int encrypt = true;
 
     while(1){
@@ -92,10 +91,13 @@ int main(int argc, char **argv){
                 printf("Server: true\n");
                 break;
             case 'd':
-                servertest = true;
+                server = true;
+                strcpy(port, "7005");
                 break;
             case 'c':
-                servertest = false;
+                server = false;
+                strcpy(address, "128.0.0.1");
+                strcpy(port, "7005");
                 break;
 
             default:
@@ -103,7 +105,6 @@ int main(int argc, char **argv){
                 return EXIT_SUCCESS;
         }
     }
-
 
     if(pipe(pipefd) == -1) {
         perror("creating pipe");
@@ -243,9 +244,9 @@ void crypto(char *input,char *output, unsigned char *key, unsigned char *iv, boo
         exit(1);
     }
     if(encryptfile){
-        encrypt(cryptoinput, cryptooutput, key, iv);
+        encryptFile(cryptoinput, cryptooutput, key, iv);
     } else {
-        decrypt(cryptoinput, cryptooutput, key, iv);
+        decryptFile(cryptoinput, cryptooutput, key, iv);
     }
     fclose(cryptoinput);
     fclose(cryptooutput);
@@ -257,7 +258,7 @@ void handleErrors(void){
     abort();
 }
 
-int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv){
+int encryptFile(FILE *input, FILE *output, unsigned char *key, unsigned char *iv){
     EVP_CIPHER_CTX *ctx;
     unsigned char inbuff[BUFFLEN];
     unsigned char outbuff[BUFFLEN];
@@ -300,7 +301,7 @@ int encrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv){
 }
 
 
-int decrypt(FILE *input, FILE *output, unsigned char *key, unsigned char *iv){
+int decryptFile(FILE *input, FILE *output, unsigned char *key, unsigned char *iv){
     EVP_CIPHER_CTX *ctx;
     unsigned char inbuff[BUFFLEN];
     unsigned char outbuff[BUFFLEN];
