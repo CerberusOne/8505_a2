@@ -3,15 +3,14 @@
  *
  *       Filename:  stego_image.cpp
  *
- *    Description:
+ *    Description: This file is used for image manipulation for the stego_utils encoding and decoding functions
  *
  *        Version:  1.0
  *        Created:  10/07/2018 07:28:56 PM
  *       Revision:  none
  *       Compiler:  gcc
  *
- *         Author:  YOUR NAME (),
- *   Organization:
+ *         Author:  Aing Ragunathan
  *
  * =====================================================================================
  */

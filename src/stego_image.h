@@ -21,22 +21,6 @@
 #include "EasyBMP.h"
 
 using namespace std;
-/*
-class EasyBMPstegoInternalHeader
-{
-    public:
-        char* FileName;
-        int FileNameSize;
-
-        int FileSize;
-
-        unsigned char* CharsToEncode;
-        int NumberOfCharsToEncode;
-
-        void InitializeFromFile( char* input , int BMPwidth, int BMPheight );
-        void InitializeFromImage( BMP& Input );
-};
-*/
 char ExtractChar( BMP& Image, int i, int j);
 void InitializeFromImage( BMP& Image );
 void InitializeFromFile( char* input, int BMPwidth, int BMPheight );

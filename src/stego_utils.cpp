@@ -3,33 +3,28 @@
  *
  *       Filename:  stego.cpp
  *
- *    Description:  
+ *    Description:  Encoding and decoding functions for stegonography
  *
  *        Version:  1.0
  *        Created:  10/01/2018 08:17:37 PM
  *       Revision:  none
  *       Compiler:  gcc
  *
- *         Author:  YOUR NAME (), 
- *   Organization:  
+ *         Author:  Aing Ragunathan
  *
  * =====================================================================================
  */
 #include "stego_utils.h"
 #include "stego_image.h"
 
+//Encodes a secret image into the cover image and creates an output image
 int encode(char* cover_image, char* secret_filename, char* output_filename) {
-// open the input BMP file
-
     BMP Image;
     Image.ReadFromFile(cover_image);
     int MaxNumberOfPixels = Image.TellWidth() * Image.TellHeight() - 2;
     int k=1;
-
-    // set image to 32 bpp
     Image.SetBitDepth( 32 );
 
-    // open the input text file
     FILE* secret_file;
     secret_file = fopen(secret_filename, "rb" );
     if( !secret_file )
@@ -44,14 +39,13 @@ int encode(char* cover_image, char* secret_filename, char* output_filename) {
     if( IH.FileNameSize == 0 || IH.NumberOfCharsToEncode == 0 )
     { return -1; }
 
-    // write the internal header;
     k=0;
     int i=0;
     int j=0;
+
+    //Loop through secret file and encode the header information in binary to the cover image's pixel LSBs
     while( !feof( secret_file ) && k < IH.NumberOfCharsToEncode )
     {
-        // decompose the character
-
         unsigned int T = (unsigned int) IH.CharsToEncode[k];
 
         int R1 = T % 2;
@@ -93,14 +87,13 @@ int encode(char* cover_image, char* secret_filename, char* output_filename) {
         if( i== Image.TellWidth() ){ i=0; j++; }
     }
 
-    // encode the actual data
     k=0;
+
+    //encode the reset of the image using binary into the LSB of pixels in the cover image
     while( !feof( secret_file ) && k < 2*IH.FileSize )
     {
         char c;
         fread( &c , 1, 1, secret_file );
-
-        // decompose the character
 
         unsigned int T = (unsigned int) c;
 
@@ -150,6 +143,7 @@ int encode(char* cover_image, char* secret_filename, char* output_filename) {
     return 0;
 }
 
+//decodes an image with hidden data to create a secret image
 int decode(char* stego_bmp, char* secret_filename) {
     BMP Image;
 
